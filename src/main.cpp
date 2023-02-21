@@ -5,7 +5,13 @@ Written by JRD Propulsion, llamaking136, and The Tech Kid
 
 Created 19th Feburary, 2023
 I can't spell Feburary
-*/
+
+	State meanings:
+	0: Idle
+	1: Countdown
+	2: Ignition
+
+*/ 
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -14,6 +20,12 @@ I can't spell Feburary
 #include <stdint.h>
 #include <pins.h>
 #include <outputs.h>
+#include <radio.h>
+#include <states.h>
+
+States current_state = States::BOOTING;
+
+char incoming_text[32];
 
 // uint8_t is another word for unsigned char
 
@@ -88,15 +100,60 @@ void setup() {
 	uint8_t is_radio_alive = radio.begin();
 	if (!is_radio_alive)
 	{
+		change_state(States::BOOT_FAILURE);
 		Serial.println("No radio detected! Is it plugged in properly?");
 		sad_outro();
 		for (;;);
 	}
+
+	// TODO: radio setup
 	
 	happy_intro();
 }
 
 
+
 void loop() {
+	if (current_state == States::BOOTING)
+	{
+		change_state(States::IDLE);
+	}
+
+	if (current_state == States::IDLE) {
+		set_led(false, true, false);
+		buzzer_on();
+		delay(500);
+		buzzer_off();
+	}
+
+	if (radio.available())
+	{
+		radio.read(&incoming_text, sizeof(incoming_text));
+	}
+
+	if (strcmp(incoming_text, "countdown10sec"))
+	{
+		change_state(States::COUNTING_DOWN);
+	}
+
+	if (strcmp(incoming_text, "abort")) {
+		change_state(States::ABORT);
+	}
+
+	if (current_state == States::COUNTING_DOWN) {
+		delay(10000);
+		change_state(States::IGNITION);
+	}
+	
+	if (current_state == States::IGNITION) {
+		digitalWrite(PYRO1, HIGH);
+		delay(2000);
+		digitalWrite(PYRO1, LOW);
+	}
+
+	if (current_state == States::ABORT) {
+		sad_outro();
+		return;
+	}
 
 }
