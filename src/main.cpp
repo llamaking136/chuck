@@ -11,7 +11,7 @@ I can't spell Feburary
 	1: Countdown
 	2: Ignition
 
-*/ 
+*/
 
 #include <Arduino.h>
 #include <SPI.h>
@@ -24,6 +24,9 @@ I can't spell Feburary
 #include <states.h>
 
 States current_state = States::BOOTING;
+
+unsigned long timer_0 = 0;
+uint8_t countdown = 10;
 
 char incoming_text[32];
 
@@ -56,7 +59,7 @@ void happy_intro()
 	led_off();
 	buzzer_off();
 	delay(500);
-	
+
 	// white
 	set_led(true, true, true);
 	buzzer_on();
@@ -75,7 +78,7 @@ void sad_outro()
 	led_off();
 	buzzer_off();
 	delay(500);
-	
+
 	// red
 	set_led(true, false, false);
 	buzzer_on();
@@ -83,7 +86,7 @@ void sad_outro()
 	led_off();
 	buzzer_off();
 	delay(500);
-	
+
 	// red
 	set_led(true, false, false);
 	buzzer_on();
@@ -94,9 +97,9 @@ void sad_outro()
 
 void setup() {
 	Serial.begin(9600);
-	
+
 	Serial.println("Chuck Startup");
-	
+
 	uint8_t is_radio_alive = radio.begin();
 	if (!is_radio_alive)
 	{
@@ -107,53 +110,70 @@ void setup() {
 	}
 
 	// TODO: radio setup
-	
+
 	happy_intro();
+	change_state(States::IDLE);
 }
 
 
 
 void loop() {
-	if (current_state == States::BOOTING)
-	{
-		change_state(States::IDLE);
-	}
-
-	if (current_state == States::IDLE) {
-		set_led(false, true, false);
-		buzzer_on();
-		delay(500);
-		buzzer_off();
-	}
-
 	if (radio.available())
 	{
 		radio.read(&incoming_text, sizeof(incoming_text));
+		if (strcmp(incoming_text, "abort") == 0){
+			change_state(States::ABORT);
+		}
+		if (strcmp(incoming_text, "countdown10sec") == 0 && current_state == States::IDLE){
+			timer_0 = millis();
+			led_off();
+			buzzer_off();
+			countdown = 10;
+			change_state(States::COUNTING_DOWN);
+			Serial.println(countdown);
+		}
 	}
 
-	if (strcmp(incoming_text, "countdown10sec"))
-	{
-		change_state(States::COUNTING_DOWN);
+	switch(current_state){
+		case States::ABORT: {
+			sad_outro();
+			digitalWrite(PYRO1, LOW);
+			Serial.println("Launch Aborted");
+			while (1);
+			break;
+		}
+		case States::IDLE: {
+			set_led(false, true, false);
+			if (millis() - timer_0 > 500){
+				buzzer_on();
+			}
+			if (millis() - timer_0 > 1000){
+				timer_0 = millis();
+				buzzer_off();
+			}
+			break;
+		}
+		case States::COUNTING_DOWN: {
+			if (millis() - timer_0 > 1000){
+				timer_0 = millis();
+				countdown -= 1;
+				Serial.println(countdown);
+				if (countdown == 0){
+					change_state(States::IGNITION);
+				}
+			}
+			break;
+		}
+		case States::IGNITION: {
+			if (millis() - timer_0 > 2000){
+				digitalWrite(PYRO1, HIGH);
+			}else{
+				digitalWrite(PYRO1, LOW);
+			}
+			break;
+		}
+		default: {
+			break;
+		}
 	}
-
-	if (strcmp(incoming_text, "abort")) {
-		change_state(States::ABORT);
-	}
-
-	if (current_state == States::COUNTING_DOWN) {
-		delay(10000);
-		change_state(States::IGNITION);
-	}
-	
-	if (current_state == States::IGNITION) {
-		digitalWrite(PYRO1, HIGH);
-		delay(2000);
-		digitalWrite(PYRO1, LOW);
-	}
-
-	if (current_state == States::ABORT) {
-		sad_outro();
-		return;
-	}
-
 }
